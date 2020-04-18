@@ -3,7 +3,7 @@
 /**
  * Инициализация игрового окна
  */
-GameWindow::GameWindow(QGraphicsScene* scene) : gameField_(new GameField(30.0f)), QGraphicsView(scene)
+GameWindow::GameWindow(QGraphicsScene* scene) : gameField_(new GameField(30.0f,{10,10})), QGraphicsView(scene)
 {
     // Основные настройки рендеринга и окна
     this->setRenderHint(QPainter::Antialiasing);

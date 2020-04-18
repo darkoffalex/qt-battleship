@@ -31,7 +31,7 @@ set(CMAKE_AUTORCC ON)
 add_executable(${TARGET_NAME}
         "Main.cpp"
         "GameWindow.cpp" "GameWindow.h"
-        "GameField.cpp" "GameField.cpp")
+        "GameField.cpp" "GameField.h")
 
 # Меняем название запускаемого файла в зависимости от типа сборки
 set_property(TARGET ${TARGET_NAME} PROPERTY OUTPUT_NAME "${TARGET_BIN_NAME}$<$<CONFIG:Debug>:_Debug>_${PLATFORM_BIT_SUFFIX}")

@@ -1,53 +1,85 @@
 #pragma once
 
 #include <QGraphicsItem>
+#include <functional>
 
 /// Часть корабля (объявление)
 struct ShipPart;
 
-/**
- * Корабль
- */
+/// Корабль
 struct Ship
 {
-    /// Ориентация корабля
+    // Ориентация корабля
     enum Orientation {
         HORIZONTAL,
         VERTICAL
-    } orientation;
+    } orientation = Orientation::HORIZONTAL;
 
-    /// Части корабля
+    // Части корабля
     QVector<ShipPart*> parts;
 
-    /// Может ли корабль быть размещен
-    bool canBePlaced = false;
+    // Было нарушение правил размещения корабля
 
-    /// Фантомный корабль (для обозначения)
+    bool placementRulesViolated = false;
+
+    // Фантомный корабль (для обозначения)
     bool isPhantom = false;
 };
 
-/**
- * Часть корабля
- */
+/// Часть корабля
 struct ShipPart
 {
-    /// Корабль
+    // Корабль
     Ship* ship = nullptr;
-    /// Часть уничтожена
+
+    // Часть уничтожена
     bool isDestroyed = false;
-    /// Начальная часть (относительно которой может осуществляться смена ориентации)
+
+    // Начальная часть (относительно которой может осуществляться смена ориентации)
     bool isBeginning = false;
-    /// Положение на поле
+
+    // Положение на поле
+    QPoint position = {};
+
+    /**
+     * Может ли часть корабля быть зазмешена на поле
+     * @param existingParts Массив существующий частей кораблей
+     * @return Да или нет
+     */
+    bool canBePlaced(const QVector<ShipPart*>& existingParts);
+
+    /**
+     * Нарисовать часть
+     * @param painter Объект QtPainter
+     * @param existingParts Части кораблей
+     * @param cellSize Размер ячейки
+     */
+    void draw(QPainter* painter, const QVector<ShipPart*>& existingParts, qreal cellSize);
+};
+
+/// Метка
+struct CellMark
+{
+    // Тип отметки
+    enum CheckType {
+        MISS,
+        CHECKED
+    } type = CheckType::CHECKED;
+
+    // Положение на поле
     QPoint position = {};
 };
 
-class GameField : public QGraphicsItem {
+/// Игровое поле
+class GameField final : public QGraphicsItem {
+
 public:
     /**
      * Конструктор
-     * @param cellSize Размер клетки
+     * @param cellSize Размер ячейки
+     * @param fieldSize Размер поля (ячеек по ширине и высоте)
      */
-    explicit GameField(qreal cellSize);
+    explicit GameField(qreal cellSize, const QPoint& fieldSize);
 
     /**
      * Деструктор
@@ -61,7 +93,7 @@ public:
     QRectF boundingRect() const override;
 
     /**
-     * Отрисовка объекта
+     * Отрисовка игрового поля со всеми кораблями и прочими объектами
      * @param painter Объект painter
      * @param option Параметры рисования
      * @param widget Указатель на виджет, на котором просиходит отрисовка
@@ -79,12 +111,20 @@ public:
     bool addShip(const QPoint& position, Ship::Orientation orientation, int shipLength = 1, bool isPhantomShip = false);
 
     /**
-     * Добавление части корабля
+     * Получить часть корабля с заданным положением среди частей
      * @param position Положение
-     * @param isDestroyed Униточжена
-     * @return Удалось ли добавить на поле
+     * @param parts Части среди которых искать
+     * @return Указатель на часть корабля
      */
-    bool addShipPart(const QPoint& position, bool isDestroyed = false);
+    static ShipPart* findAt(const QPoint& position, const std::vector<ShipPart*>& parts);
+
+    /**
+     * Полдучить все части удовлетворябщие определнному условию
+     * @param parts Массив частей
+     * @param condition Услвоие (функция обратного вызкова)
+     * @return Массив удоавлетворяющих условию частей
+     */
+    static std::vector<ShipPart*> findAllOf(const std::vector<ShipPart*>& parts, const std::function<bool(ShipPart*)>& condition);
 
 protected:
     /**
@@ -108,35 +148,16 @@ protected:
 private:
     /// Размер клетки поля
     qreal cellSize_;
+
+    /// Размер поля
+    QPoint fieldSize_;
+
     /// Массив кораблей
     QVector<Ship*> ships_;
-    /// Массив частей корабля отображаемых на поле
-    ShipPart* shipParts_[10][10] = {{nullptr}};
 
-    /**
-     * Очищает поле (инициализируя все ячейки nullptr значениями)
-     */
-    void cleanField();
+    /// Массив частей кораблей
+    QVector<ShipPart*> shipParts_;
 
-    /**
-     * Может ли часть корабля быть размещена на поле в заданном месте
-     * @param owner Владеющий частью корабль
-     * @param position Положение
-     * @return Да или нет
-     */
-    bool partCanBePlacedAt(Ship *owner, const QPoint& position);
-
-    /**
-     * Нарисовать часть корабля
-     * @param painter Указатель на painter
-     * @param part Часть корабля
-     */
-    void paintShipPart(QPainter* painter, ShipPart* part);
-
-    /**
-     * Получить указатель на часть корабля которая находится в заданной точке, либо nullptr
-     * @param point Ячейка поля
-     * @return Указатель или nullptr (если части нет, либо точка за пределами поля)
-     */
-    ShipPart* atPoint(const QPoint& point);
+    /// Массив отметок клеток
+    QVector<CellMark*> cellMarks_;
 };
