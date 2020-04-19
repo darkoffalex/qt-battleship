@@ -19,11 +19,16 @@ struct Ship
     QVector<ShipPart*> parts;
 
     // Было нарушение правил размещения корабля
-
     bool placementRulesViolated = false;
 
     // Фантомный корабль (для обозначения)
     bool isPhantom = false;
+
+    /**
+     * Получить головную часть корабля
+     * @return Указатель на головную часть (если есть) либо nullptr
+     */
+    ShipPart* getHead();
 };
 
 /// Часть корабля
@@ -40,13 +45,6 @@ struct ShipPart
 
     // Положение на поле
     QPoint position = {};
-
-    /**
-     * Может ли часть корабля быть зазмешена на поле
-     * @param existingParts Массив существующий частей кораблей
-     * @return Да или нет
-     */
-    bool canBePlaced(const QVector<ShipPart*>& existingParts);
 
     /**
      * Нарисовать часть
@@ -72,6 +70,7 @@ struct CellMark
 
 /// Игровое поле
 class GameField final : public QGraphicsItem {
+
 
 public:
     /**
@@ -104,11 +103,35 @@ public:
      * Добавление корабля
      * @param position Положение начальной ячейки (части) корабля
      * @param orientation Ориентация (относительно начальной ячейки)
-     * @param shipLength Длина
+     * @param shipLength Длина корабля
      * @param isPhantomShip Фантомный корабль (игнорирует правила размещения, но факт нарушения правил фиксируется)
-     * @return Удалось ли добавить корабль на поле
+     * @return Указатель на добавленный корабль
      */
-    bool addShip(const QPoint& position, Ship::Orientation orientation, int shipLength = 1, bool isPhantomShip = false);
+    Ship* addShip(const QPoint& position, Ship::Orientation orientation, int shipLength = 1, bool isPhantomShip = false);
+
+    /**
+     * Перемещение корабля
+     * @param ship Указатель на корабль
+     * @param newPosition Новое положение локального начала
+     * @param origin Указатель на часть являющуюся локальным началом (если не указано будет взята "голова" коробля)
+     * @param ignoreShip Игнорировать заданный корабль при валидации размещения
+     */
+    void moveShip(Ship* ship, const QPoint& newPosition, ShipPart* origin = nullptr, Ship* ignoreShip = nullptr);
+
+    /**
+     * Удаление корабля с поля
+     * @param ship Указатель на указатель на корабль
+     */
+    void removeShip(Ship** ship);
+
+    /**
+     * Копирование корабля
+     * @param sourceShip Исходный корабль
+     * @param phantomCopy Фантомная копия
+     * @param ignoreShip Игнорировать заданный корабль при валидации размещения
+     * @return Указатель на копию
+     */
+    Ship* copyShip(Ship* sourceShip, bool phantomCopy = false, Ship* ignoreShip = nullptr);
 
     /**
      * Получить часть корабля с заданным положением среди частей
@@ -134,7 +157,7 @@ protected:
     void mousePressEvent(QGraphicsSceneMouseEvent *event) override;
 
     /**
-     * Обработчик события движения курсора мыши
+     * Обработка события движения мыши при зажатой кнопке
      * @param event Событие
      */
     void mouseMoveEvent(QGraphicsSceneMouseEvent *event) override;
@@ -160,4 +183,38 @@ private:
 
     /// Массив отметок клеток
     QVector<CellMark*> cellMarks_;
+
+    /// Перетаскивание кораблей
+    struct {
+        // Целевой корабль (который нужно переместить)
+        Ship* targetShip = nullptr;
+        // Часть целевого корабля которая оказалось под курсором
+        ShipPart* targetOriginPart = nullptr;
+        // Корабль маркер (фантомный)
+        Ship* marketShip = nullptr;
+        // Часть фантомного корабля которая оказалось под курсором
+        ShipPart* markerOriginPart = nullptr;
+    } draggable_;
+
+    /**
+     * Проверить не нарушает ли правила размещения корабль
+     * @param ship Указатель на корабль
+     * @param ignoreShip Игнорировать заданный корабль
+     */
+    void validateShipPlacement(Ship* ship, Ship* ignoreShip = nullptr);
+
+    /**
+     * Проверить не нарушает ли правила размещения часть корабля
+     * @param shipPart Указатель на часть корабля
+     * @param ignoreShip Игнорировать заданный корабль
+     * @return Нет ли нарушений
+     */
+    bool validateShipPartPlacement(ShipPart* shipPart, Ship* ignoreShip = nullptr);
+
+    /**
+     * Преобразовать координаты сцены в координаты игрового поля
+     * @param sceneSpacePoint Точка в координатах сцены
+     * @return Точка в координатах игрового поля
+     */
+    QPoint toGameFieldSpace(const QPointF& sceneSpacePoint);
 };

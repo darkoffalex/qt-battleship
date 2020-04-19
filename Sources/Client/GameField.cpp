@@ -1,14 +1,26 @@
 #include "GameField.h"
+
 #include <QPainter>
+#include <QGraphicsSceneMouseEvent>
+#include <QtMath>
+#include <QtWidgets>
 
 /**
  * Конструктор
  * @param cellSize Размер ячейки
  * @param fieldSize Размер поля (ячеек по ширине и высоте)
  */
-GameField::GameField(qreal cellSize, const QPoint &fieldSize):cellSize_(cellSize),fieldSize_(fieldSize){
-    this->addShip({0,0},Ship::VERTICAL,3,false);
-    this->addShip({2,2},Ship::HORIZONTAL,2,true);
+GameField::GameField(qreal cellSize, const QPoint &fieldSize):
+        cellSize_(cellSize),
+        fieldSize_(fieldSize),
+        draggable_({})
+{
+    // Включить обработку событий кликов мыши
+    this->setAcceptedMouseButtons(Qt::LeftButton);
+
+    this->addShip({0,0},Ship::HORIZONTAL,4, false);
+    this->addShip({0,2},Ship::VERTICAL,3, false);
+    this->addShip({2,2},Ship::VERTICAL,3, false);
 }
 
 /**
@@ -35,6 +47,7 @@ QRectF GameField::boundingRect() const {
  * @param widget Указатель на виджет, на котором просиходит отрисовка
  */
 void GameField::paint(QPainter *painter, const QStyleOptionGraphicsItem *option, QWidget *widget) {
+
     // Заличка не нужна
     painter->setBrush(Qt::NoBrush);
     // Черные линии толщиной в 1 пиксель
@@ -106,96 +119,178 @@ void GameField::paint(QPainter *painter, const QStyleOptionGraphicsItem *option,
  * Добавление корабля
  * @param position Положение начальной ячейки (части) корабля
  * @param orientation Ориентация (относительно начальной ячейки)
- * @param shipLength Длина
+ * @param shipLength Длина корабля
  * @param isPhantomShip Фантомный корабль (игнорирует правила размещения, но факт нарушения правил фиксируется)
- * @return Удалось ли добавить корабль на поле
+ * @return Указатель на добавленный корабль
  */
-bool GameField::addShip(const QPoint &position, Ship::Orientation orientation, int shipLength, bool isPhantomShip) {
-
-    // Область игрового поля
-    QRect gameFieldRect(0,0,fieldSize_.x(),fieldSize_.y());
-
+Ship* GameField::addShip(const QPoint &position, Ship::Orientation orientation, int shipLength, bool isPhantomShip)
+{
     // Создать корабль
     auto ship = new Ship;
     ship->orientation = orientation;
     ship->placementRulesViolated = false;
     ship->isPhantom = isPhantomShip;
 
-    // Построить части корябля и проверить каждую часть возможность ее добавления на поле
+    // Создать части корабля
     for(int i = 0; i < shipLength; i++)
     {
         // Положение новой части на поле
         QPoint partPosition = (ship->orientation == Ship::HORIZONTAL) ? position + QPoint(i,0) : position + QPoint(0,i);
 
-        // Если часть не за пределами поля
-        if(gameFieldRect.contains(partPosition))
+        // Создать часть корабля
+        auto part = new ShipPart;
+        part->ship = ship;
+        part->position = partPosition;
+        part->isBeginning = i == 0;
+        part->isDestroyed = false;
+
+        // Добавить в корабль
+        ship->parts.push_back(part);
+
+        // Добавить на поле
+        shipParts_.push_back(part);
+    }
+
+    // Проверить валидность положения корабля
+    validateShipPlacement(ship);
+
+    // Добавить в список кораблей
+    ships_.push_back(ship);
+
+    return ship;
+}
+
+/**
+ * Перемещение корабля
+ * @param ship Указатель на корабль
+ * @param newPosition Новое положение локального начала
+ * @param origin Указатель на часть являющуюся локальным началом (если не указано будет взята "голова" коробля)
+ * @param ignoreShip Игнорировать заданный корабль при валидации размещения
+ */
+void GameField::moveShip(Ship *ship, const QPoint &newPosition, ShipPart *origin, Ship* ignoreShip)
+{
+    // Получить локальный центр корабля
+    auto localOrigin = origin != nullptr ? origin : ship->getHead();
+    localOrigin = (localOrigin == nullptr && !ship->parts.empty()) ? ship->parts[0] : localOrigin;
+
+    // Если локальный центр найден
+    if(localOrigin != nullptr){
+        auto delta = newPosition - localOrigin->position;
+        for (auto part : ship->parts) {
+            part->position += delta;
+        }
+    }
+
+    // Валидация положения
+    this->validateShipPlacement(ship,ignoreShip);
+}
+
+/**
+ * Удаление корабля с поля
+ * @param ship Указатель на указатель на корабль
+ */
+void GameField::removeShip(Ship **ship) {
+
+    if(*ship != nullptr && !(*ship)->parts.empty()){
+        for(auto part : (*ship)->parts){
+            shipParts_.removeOne(part);
+            delete part;
+        }
+    }
+
+    ships_.removeOne((*ship));
+    delete (*ship);
+    *ship = nullptr;
+}
+
+/**
+ * Копирование корабля
+ * @param sourceShip Исходный корабль
+ * @param phantomCopy Фантомная копия
+ * @param ignoreShip Игнорировать заданный корабль при валидации размещения
+ * @return Указатель на копию
+ */
+Ship *GameField::copyShip(Ship *sourceShip, bool phantomCopy, Ship* ignoreShip) {
+
+    if(sourceShip != nullptr)
+    {
+        // Копировать корабль
+        auto copyShip = new Ship;
+        copyShip->orientation = sourceShip->orientation;
+        copyShip->placementRulesViolated = sourceShip->placementRulesViolated;
+        copyShip->isPhantom = sourceShip->isPhantom || phantomCopy;
+
+        // Копировать части корабля
+        for(auto srcPart : sourceShip->parts)
         {
-            // Создать часть корабля
-            auto part = new ShipPart;
-            part->ship = ship;
-            part->position = partPosition;
-            part->isBeginning = i == 0;
-            part->isDestroyed = false;
+            auto copyPart = new ShipPart;
+            copyPart->position = srcPart->position;
+            copyPart->isBeginning = srcPart->isBeginning;
+            copyPart->isDestroyed = srcPart->isDestroyed;
+            copyPart->ship = copyShip;
 
-            // Может ли ячейка быть зазмещена по правилам
-            bool partCanBePlaced = part->canBePlaced(shipParts_);
-
-            // Если ячейка не может быть размещена - значит правила размещения корабля были нарушены
-            if(!partCanBePlaced) ship->placementRulesViolated = true;
-
-            // Если правила не были нарушены, либо если это фантомный корабль - добавить ячейку
-            if(!ship->placementRulesViolated || isPhantomShip)
-            {
-                // Добавить в корабль
-                ship->parts.push_back(part);
-                // Добавить на поле
-                shipParts_.push_back(part);
-            }
-            // Если ячейка не должна размещаться
-            else
-            {
-                delete part;
-            }
+            copyShip->parts.push_back(copyPart);
+            shipParts_.push_back(copyPart);
         }
-        // Если часть за пределами поля - правила размещения корабля были нарушены
-        else {
-            ship->placementRulesViolated = true;
-        }
+
+        // Валиация положения копии
+        validateShipPlacement(copyShip,ignoreShip);
+
+        // Добавить корабль в список
+        ships_.push_back(copyShip);
+
+        return copyShip;
     }
 
-    // Если у корабля есть части, корабль не нарушает правил либо он фантомный
-    if(!ship->parts.empty() && (!ship->placementRulesViolated || isPhantomShip)){
-        // Добавить в список кораблей
-        ships_.push_back(ship);
-        return true;
-    }
-
-    // Если корабль не должен быть отрисован на поле
-    qDeleteAll(ship->parts);
-    delete ship;
-    return false;
+    return nullptr;
 }
 
 /// H E L P E R S
 
 /**
- * Может ли часть корабля быть зазмешена на поле
- * @param existingParts Массив существующий частей кораблей
- * @return Да или нет
+ * Проверить не нарушает ли правила размещения корабль
+ * @param ship Указатель на корабль
+ * @param ignoreShip Игнорировать заданный корабль
  */
-bool ShipPart::canBePlaced(const QVector<ShipPart*>& existingParts)
-{
+void GameField::validateShipPlacement(Ship *ship, Ship* ignoreShip) {
+    for(auto part : ship->parts){
+        if(!this->validateShipPartPlacement(part,ignoreShip)){
+            ship->placementRulesViolated = true;
+            return;
+        }
+    }
+    ship->placementRulesViolated = false;
+}
+
+/**
+ * Проверить не нарушает ли правила размещения часть корабля
+ * @param shipPart Указатель на часть корабля
+ * @param ignoreShip Игнорировать заданный корабль
+ * @return Нет ли нарушений
+ */
+bool GameField::validateShipPartPlacement(ShipPart *shipPart, Ship* ignoreShip) {
+
+    // Если часть находится за пределами поля - размещение не валидно
+    if(!QRect(0,0,fieldSize_.x(),fieldSize_.y()).contains(shipPart->position)){
+        return false;
+    }
+
     // Пройтись по всем добавленным на поле частям кораблей
-    for(ShipPart* part : existingParts)
+    for(ShipPart* entryPart : shipParts_)
     {
+        // Если указан корабль для игнорирования
+        if(ignoreShip != nullptr && entryPart->ship == ignoreShip){
+            continue;
+        }
+
         // Расстояние между проверяемой и текущей частью
         QPoint delta = {
-                qAbs(part->position.x() - this->position.x()),
-                qAbs(part->position.y() - this->position.y())
+                qAbs(entryPart->position.x() - shipPart->position.x()),
+                qAbs(entryPart->position.y() - shipPart->position.y())
         };
 
         // Если часть корабля слишком близко, и ее корабль это не корабль этой части
-        if((delta.x() < 2 && delta.y() < 2) && part->ship != this->ship)
+        if((delta.x() < 2 && delta.y() < 2) && entryPart->ship != shipPart->ship)
         {
             return false;
         }
@@ -289,7 +384,33 @@ std::vector<ShipPart *> GameField::findAllOf(const std::vector<ShipPart *> &part
     return results;
 }
 
+/**
+ * Преобразовать координаты сцены в координаты игрового поля
+ * @param sceneSpacePoint Точка в координатах сцены
+ * @return Точка в координатах игрового поля
+ */
+QPoint GameField::toGameFieldSpace(const QPointF &sceneSpacePoint) {
+    return {
+        qFloor(sceneSpacePoint.x() / cellSize_) - 1,
+        qFloor(sceneSpacePoint.y() / cellSize_) - 1
+    };
+}
 
+/**
+ * Получить головную часть корабля
+ * @return Указатель на головную часть (если есть) либо nullptr
+ */
+ShipPart *Ship::getHead() {
+    auto elementIt = std::find_if(parts.begin(),parts.end(),[&](ShipPart* entry){
+        return entry->isBeginning;
+    });
+
+    if(elementIt == parts.end()){
+        return nullptr;
+    }
+
+    return *elementIt;
+}
 
 /// E V E N T S
 
@@ -298,15 +419,55 @@ std::vector<ShipPart *> GameField::findAllOf(const std::vector<ShipPart *> &part
  * @param event Событие
  */
 void GameField::mousePressEvent(QGraphicsSceneMouseEvent *event) {
-    QGraphicsItem::mousePressEvent(event);
+
+    // Если зажали ЛКМ
+    if(event->button() == Qt::LeftButton)
+    {
+        // Сменить курсор
+        setCursor(Qt::SizeAllCursor);
+
+        // Получить положение курсора в координатах игрового поля
+        QPoint pos = this->toGameFieldSpace(event->scenePos());
+        // Часть которая может находится в данной клетке
+        ShipPart* part = GameField::findAt(pos,shipParts_.toStdVector());
+
+        // Если это часть не фантомного корабля
+        if(part != nullptr && part->ship != nullptr && !part->ship->isPhantom)
+        {
+            // Информация о целевом корабле
+            draggable_.targetOriginPart = part;
+            draggable_.targetShip = part->ship;
+
+            // Сделать фантомную копию корабля
+            draggable_.marketShip = this->copyShip(draggable_.targetShip, true,draggable_.targetShip);
+            // Найти ту часть фантомного корабля на которой сейчас курсор
+            draggable_.markerOriginPart = GameField::findAt(pos,draggable_.marketShip->parts.toStdVector());
+            // Перерисовать поле
+            this->update(this->boundingRect());
+        }
+    }
 }
 
 /**
- * Обработчик события движения курсора мыши
+ * Обработка события движения мыши при зажатой кнопке
  * @param event Событие
  */
 void GameField::mouseMoveEvent(QGraphicsSceneMouseEvent *event) {
-    QGraphicsItem::mouseMoveEvent(event);
+
+    // Получить положение курсора в координатах игрового поля
+    QPoint pos = this->toGameFieldSpace(event->scenePos());
+
+    // Если есть маркер и часть, за которую "схватили"
+    if(draggable_.marketShip != nullptr && draggable_.markerOriginPart != nullptr)
+    {
+        // Если у части, за которую "схватили" позиция отличается от текущй поизиции курсора
+        if(draggable_.markerOriginPart->position != pos){
+            // Сдвинуть корабль-маркер
+            this->moveShip(draggable_.marketShip,pos,draggable_.markerOriginPart,draggable_.targetShip);
+            // Перерисовать поле
+            this->update(this->boundingRect());
+        }
+    }
 }
 
 /**
@@ -314,5 +475,37 @@ void GameField::mouseMoveEvent(QGraphicsSceneMouseEvent *event) {
  * @param event Событие
  */
 void GameField::mouseReleaseEvent(QGraphicsSceneMouseEvent *event) {
-    QGraphicsItem::mouseReleaseEvent(event);
+
+    // Если отпустили ЛКМ
+    if(event->button() == Qt::LeftButton)
+    {
+        // Сменить курсор
+        setCursor(Qt::ArrowCursor);
+
+        // Получить положение курсора в координатах игрового поля
+        QPoint pos = this->toGameFieldSpace(event->scenePos());
+
+        // Если есть данные о фантомном корабле
+        if(draggable_.marketShip != nullptr)
+        {
+            // Если положение в которое был перемещен фантомный корабль - легально
+            if(!draggable_.marketShip->placementRulesViolated){
+                // Переместить туда корабль целевой
+                if(draggable_.targetShip != nullptr && draggable_.targetOriginPart != nullptr){
+                    this->moveShip(draggable_.targetShip,pos,draggable_.targetOriginPart);
+                }
+            }
+
+            // Удалить фантомный корабль
+            draggable_.markerOriginPart = nullptr;
+            this->removeShip(&draggable_.marketShip);
+
+            // Перерисовать поле
+            this->update(this->boundingRect());
+        }
+
+        // Очистить указатели
+        draggable_.targetShip = nullptr;
+        draggable_.targetOriginPart = nullptr;
+    }
 }
