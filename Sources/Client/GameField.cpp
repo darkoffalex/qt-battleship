@@ -16,11 +16,22 @@ GameField::GameField(qreal cellSize, const QPoint &fieldSize):
         draggable_({})
 {
     // Включить обработку событий кликов мыши
-    this->setAcceptedMouseButtons(Qt::LeftButton);
+    this->setAcceptedMouseButtons(Qt::LeftButton | Qt::RightButton);
 
-    this->addShip({0,0},Ship::HORIZONTAL,4, false);
-    this->addShip({0,2},Ship::VERTICAL,3, false);
-    this->addShip({2,2},Ship::VERTICAL,3, false);
+    // Добавить корабли
+    this->addShip({0,11},Ship::HORIZONTAL,4);
+
+    this->addShip({0,13},Ship::HORIZONTAL,3);
+    this->addShip({4,13},Ship::HORIZONTAL,3);
+
+    this->addShip({0,15},Ship::HORIZONTAL,2);
+    this->addShip({3,15},Ship::HORIZONTAL,2);
+    this->addShip({6,15},Ship::HORIZONTAL,2);
+
+    this->addShip({0,17},Ship::HORIZONTAL,1);
+    this->addShip({2,17},Ship::HORIZONTAL,1);
+    this->addShip({4,17},Ship::HORIZONTAL,1);
+    this->addShip({6,17},Ship::HORIZONTAL,1);
 }
 
 /**
@@ -37,7 +48,7 @@ GameField::~GameField() {
  * @return Прямоугольник
  */
 QRectF GameField::boundingRect() const {
-    return {QPointF(0.0f,0.0f),QPointF(cellSize_ * 11.0f, cellSize_ * 11.0f)};
+    return {QPointF(0.0f,0.0f),QPointF(cellSize_ * 11.0f, cellSize_ * 20.0f)};
 }
 
 /**
@@ -121,9 +132,10 @@ void GameField::paint(QPainter *painter, const QStyleOptionGraphicsItem *option,
  * @param orientation Ориентация (относительно начальной ячейки)
  * @param shipLength Длина корабля
  * @param isPhantomShip Фантомный корабль (игнорирует правила размещения, но факт нарушения правил фиксируется)
+ * @param justCreate Только создать корабль, но не добавлять его
  * @return Указатель на добавленный корабль
  */
-Ship* GameField::addShip(const QPoint &position, Ship::Orientation orientation, int shipLength, bool isPhantomShip)
+Ship* GameField::addShip(const QPoint &position, Ship::Orientation orientation, int shipLength, bool isPhantomShip, bool justCreate)
 {
     // Создать корабль
     auto ship = new Ship;
@@ -148,14 +160,18 @@ Ship* GameField::addShip(const QPoint &position, Ship::Orientation orientation, 
         ship->parts.push_back(part);
 
         // Добавить на поле
-        shipParts_.push_back(part);
+        if(!justCreate){
+            shipParts_.push_back(part);
+        }
     }
 
     // Проверить валидность положения корабля
     validateShipPlacement(ship);
 
     // Добавить в список кораблей
-    ships_.push_back(ship);
+    if(!justCreate){
+        ships_.push_back(ship);
+    }
 
     return ship;
 }
@@ -243,6 +259,52 @@ Ship *GameField::copyShip(Ship *sourceShip, bool phantomCopy, Ship* ignoreShip) 
     }
 
     return nullptr;
+}
+
+/**
+ * Удаление корабля с поля
+ * @param ship Указатель на указатель на корабль
+ */
+void GameField::rotateShip(Ship *ship)
+{
+    if(ship != nullptr)
+    {
+        // Найти головную часть корабля
+        auto head = ship->getHead();
+
+        // Если есть головная часть
+        if(head != nullptr)
+        {
+            // Создать временный корабль-меркер, с отличающейся от исходного ориентацией, не добавляя его
+            Ship* shipToTest = this->addShip(
+                    head->position,
+                    ship->orientation == Ship::VERTICAL ? Ship::HORIZONTAL : Ship::VERTICAL,
+                    ship->parts.size(),
+                    true,
+                    true);
+
+            // Проверить, может ли такой корабль быть размещен, если игнорировать исходный
+            this->validateShipPlacement(shipToTest,ship);
+
+            // Если корабль может быть размещен
+            if(!shipToTest->placementRulesViolated)
+            {
+                // Удалить корабль для теста
+                delete shipToTest;
+
+                // Сменить ориентацию корабля
+                ship->orientation = ship->orientation == Ship::VERTICAL ? Ship::HORIZONTAL : Ship::VERTICAL;
+
+                // Переместить все части корабля согласно новой ориентации
+                for(int i = 0; i < ship->parts.size(); i++)
+                {
+                    // Положение части
+                    QPoint partPosition = (ship->orientation == Ship::HORIZONTAL) ? head->position + QPoint(i,0) : head->position + QPoint(0,i);
+                    ship->parts[i]->position = partPosition;
+                }
+            }
+        }
+    }
 }
 
 /// H E L P E R S
@@ -442,6 +504,23 @@ void GameField::mousePressEvent(QGraphicsSceneMouseEvent *event) {
             draggable_.marketShip = this->copyShip(draggable_.targetShip, true,draggable_.targetShip);
             // Найти ту часть фантомного корабля на которой сейчас курсор
             draggable_.markerOriginPart = GameField::findAt(pos,draggable_.marketShip->parts.toStdVector());
+            // Перерисовать поле
+            this->update(this->boundingRect());
+        }
+    }
+    // Если зажали ПКМ, и до этого не было активировано перетаскивание
+    else if(event->button() == Qt::RightButton && draggable_.targetShip == nullptr)
+    {
+        // Получить положение курсора в координатах игрового поля
+        QPoint pos = this->toGameFieldSpace(event->scenePos());
+        // Часть которая может находится в данной клетке
+        ShipPart* part = GameField::findAt(pos,shipParts_.toStdVector());
+
+        // Если это часть не фантомного корабля
+        if(part != nullptr && part->ship != nullptr && !part->ship->isPhantom)
+        {
+            // Повернуть, если это возможно
+            this->rotateShip(part->ship);
             // Перерисовать поле
             this->update(this->boundingRect());
         }

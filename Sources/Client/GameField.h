@@ -105,9 +105,10 @@ public:
      * @param orientation Ориентация (относительно начальной ячейки)
      * @param shipLength Длина корабля
      * @param isPhantomShip Фантомный корабль (игнорирует правила размещения, но факт нарушения правил фиксируется)
+     * @param justCreate Только создать корабль, но не добавлять его
      * @return Указатель на добавленный корабль
      */
-    Ship* addShip(const QPoint& position, Ship::Orientation orientation, int shipLength = 1, bool isPhantomShip = false);
+    Ship* addShip(const QPoint& position, Ship::Orientation orientation, int shipLength = 1, bool isPhantomShip = false, bool justCreate = false);
 
     /**
      * Перемещение корабля
@@ -132,6 +133,12 @@ public:
      * @return Указатель на копию
      */
     Ship* copyShip(Ship* sourceShip, bool phantomCopy = false, Ship* ignoreShip = nullptr);
+
+    /**
+     * Смена ориентации корабля
+     * @param ship Указатель на корабль
+     */
+    void rotateShip(Ship* ship);
 
     /**
      * Получить часть корабля с заданным положением среди частей
