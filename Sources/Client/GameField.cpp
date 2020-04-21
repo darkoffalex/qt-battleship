@@ -122,6 +122,24 @@ void GameField::paint(QPainter *painter, const QStyleOptionGraphicsItem *option,
                     cellSize_);
         }
     }
+
+    // Рисование отметок на клетках
+    for(auto& mark : cellMarks_)
+    {
+        // Черные линии толщиной в 1 пиксель
+        painter->setPen(QPen(
+                mark->type == CellMark::MISS ? QColor(0,0,0) :
+                QColor(100,100,100),
+                5.0f,
+                Qt::PenStyle::SolidLine,
+                Qt::PenCapStyle::RoundCap,
+                Qt::PenJoinStyle::MiterJoin));
+
+        // Рисование точки
+        painter->drawPoint(
+                static_cast<int>((mark->position.x() + 1.5) * cellSize_),
+                static_cast<int>((mark->position.y() + 1.5) * cellSize_));
+    }
 }
 
 /// I N T E R A C T I O N
@@ -305,6 +323,35 @@ void GameField::rotateShip(Ship *ship)
             }
         }
     }
+}
+
+/**
+ * Добавить метку на клетке
+ * @param position Положение
+ * @param type Тип Тип метки
+ */
+void GameField::addMark(const QPoint &position, CellMark::CheckType type)
+{
+    // Создать отметку
+    auto mark = new CellMark;
+    mark->position = position;
+    mark->type = type;
+
+    // Добавить указатель в список
+    this->cellMarks_.push_back(mark);
+}
+
+/**
+ * Удаление метки
+ * @param mark Указатель на указатель на метку
+ */
+void GameField::removeMark(CellMark **mark) {
+    // Убрать из списка
+    this->cellMarks_.removeOne(*mark);
+    // Удалить из памяти
+    delete (*mark);
+    // Обнулить укаатель
+    *mark = nullptr;
 }
 
 /// H E L P E R S

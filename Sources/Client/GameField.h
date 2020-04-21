@@ -141,6 +141,19 @@ public:
     void rotateShip(Ship* ship);
 
     /**
+     * Добавить метку на клетке
+     * @param position Положение
+     * @param type Тип Тип метки
+     */
+    void addMark(const QPoint& position, CellMark::CheckType type);
+
+    /**
+     * Удаление метки
+     * @param mark Указатель на указатель на метку
+     */
+    void removeMark(CellMark** mark);
+
+    /**
      * Получить часть корабля с заданным положением среди частей
      * @param position Положение
      * @param parts Части среди которых искать
