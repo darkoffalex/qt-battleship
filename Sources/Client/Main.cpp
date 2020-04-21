@@ -14,7 +14,7 @@ int main(int argc, char* argv[])
     QApplication app(argc, argv);
 
     // Игровое окно
-    QGraphicsScene scene(0, 0, 800, 600);
+    QGraphicsScene scene(0, 0, 720, 630);
     GameWindow gameWindow(&scene);
     gameWindow.show();
 

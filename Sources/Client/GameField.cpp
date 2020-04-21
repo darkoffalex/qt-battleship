@@ -9,29 +9,16 @@
  * Конструктор
  * @param cellSize Размер ячейки
  * @param fieldSize Размер поля (ячеек по ширине и высоте)
+ * @param fieldState Состояние поля
  */
-GameField::GameField(qreal cellSize, const QPoint &fieldSize):
+GameField::GameField(qreal cellSize, const QPoint &fieldSize, FieldState fieldState):
         cellSize_(cellSize),
         fieldSize_(fieldSize),
+        state_(fieldState),
         draggable_({})
 {
     // Включить обработку событий кликов мыши
     this->setAcceptedMouseButtons(Qt::LeftButton | Qt::RightButton);
-
-    // Добавить корабли
-    this->addShip({0,11},Ship::HORIZONTAL,4);
-
-    this->addShip({0,13},Ship::HORIZONTAL,3);
-    this->addShip({4,13},Ship::HORIZONTAL,3);
-
-    this->addShip({0,15},Ship::HORIZONTAL,2);
-    this->addShip({3,15},Ship::HORIZONTAL,2);
-    this->addShip({6,15},Ship::HORIZONTAL,2);
-
-    this->addShip({0,17},Ship::HORIZONTAL,1);
-    this->addShip({2,17},Ship::HORIZONTAL,1);
-    this->addShip({4,17},Ship::HORIZONTAL,1);
-    this->addShip({6,17},Ship::HORIZONTAL,1);
 }
 
 /**
@@ -62,7 +49,7 @@ void GameField::paint(QPainter *painter, const QStyleOptionGraphicsItem *option,
     // Заличка не нужна
     painter->setBrush(Qt::NoBrush);
     // Черные линии толщиной в 1 пиксель
-    painter->setPen(QPen(QColor(0,0,0),1.0f,Qt::PenStyle::SolidLine,Qt::PenCapStyle::SquareCap,Qt::PenJoinStyle::MiterJoin));
+    painter->setPen(QPen(QColor(0,0,0, this->state_ == ENEMY_PREPARING ? 100 : 255),1.0f,Qt::PenStyle::SolidLine,Qt::PenCapStyle::SquareCap,Qt::PenJoinStyle::MiterJoin));
 
     // Символы первого ряда
     //TODO: придумать что-то на случаей если поле больше чем 10 клеток в ширину
@@ -354,6 +341,111 @@ void GameField::removeMark(CellMark **mark) {
     *mark = nullptr;
 }
 
+/**
+ * Установить состояние игрового поля
+ * @param state Состояние
+ */
+void GameField::setState(FieldState state) {
+    this->state_ = state;
+    this->update(this->boundingRect());
+}
+
+/**
+ * Выстрел по полю (создание части, либо корабля)
+ * @param position Положение на поле
+ * @param shotType Тип выстрела
+ */
+void GameField::shotAt(const QPoint &position, GameField::ShotType shotType) {
+    // Если это промашка
+    if(shotType == ShotType::MISS){
+        // Добавить отметку
+        this->addMark(position,CellMark::MISS);
+    }
+    // Если это попадание (не уничтожение)
+    else if(shotType == ShotType::HIT){
+        // Добавить часть корабля (без корабля)
+        auto part = new ShipPart;
+        part->position = position;
+        part->isDestroyed = true;
+        part->isBeginning = false;
+        part->ship = nullptr;
+        this->shipParts_.push_back(part);
+    }
+    // Если это уничтожение корабля
+    else if (shotType == ShotType::DESTROYED){
+
+        // Добавить часть корабля (без корабля)
+        auto part = new ShipPart;
+        part->position = position;
+        part->isDestroyed = true;
+        part->isBeginning = false;
+        part->ship = nullptr;
+        this->shipParts_.push_back(part);
+
+        // Добавить корабль
+        auto ship = new Ship;
+        ship->placementRulesViolated = false;
+        ship->isPhantom = false;
+        ship->parts.push_back(part);
+        this->getAllNeighborsOf(part,&ship->parts);
+        this->ships_.push_back(ship);
+    }
+    // Обновить поле
+    this->update(this->boundingRect());
+}
+
+/**
+ * Получить состояние игрового поля
+ * @return Состояние поля
+ */
+GameField::FieldState GameField::getState() {
+    return this->state_;
+}
+
+/**
+ * Добавить стартовые корабли
+ */
+void GameField::addStartupShips()
+{
+    // 1 по 4
+    this->addShip({0,11},Ship::HORIZONTAL,4);
+    // 2 по 3
+    this->addShip({0,13},Ship::HORIZONTAL,3);
+    this->addShip({4,13},Ship::HORIZONTAL,3);
+    // 3 по 2
+    this->addShip({0,15},Ship::HORIZONTAL,2);
+    this->addShip({3,15},Ship::HORIZONTAL,2);
+    this->addShip({6,15},Ship::HORIZONTAL,2);
+    // 4 по 1
+    this->addShip({0,17},Ship::HORIZONTAL,1);
+    this->addShip({2,17},Ship::HORIZONTAL,1);
+    this->addShip({4,17},Ship::HORIZONTAL,1);
+    this->addShip({6,17},Ship::HORIZONTAL,1);
+}
+
+/**
+ * Все ли корабли размещены в пределах поля
+ * @return Да или нет
+ */
+bool GameField::allShipsPlaced() {
+    for(auto ship: ships_){
+        if(ship->placementRulesViolated){
+            return false;
+        }
+    }
+    return true;
+}
+
+/**
+ * Установить обработчик события выстрела по вражескому полю
+ * @param callback Функция-обработчик
+ */
+void GameField::setShotAtEnemyCallback(const std::function<void(const QPoint &pos, GameField* gameField)>& callback)
+{
+    this->shotAtEnemyCallback_ = callback;
+}
+
+
 /// H E L P E R S
 
 /**
@@ -521,6 +613,44 @@ ShipPart *Ship::getHead() {
     return *elementIt;
 }
 
+/**
+ * Рекурсивно заполнить массив соседями части
+ * @param part Исходная часть
+ * @param neighbors Указатель на массив соседей
+ */
+void GameField::getAllNeighborsOf(ShipPart *part, QVector<ShipPart*>* neighbors) {
+
+    // Получить все части в виде обычного std массива
+    auto parts = this->shipParts_.toStdVector();
+
+    // Получить указатели на соседние части
+    auto top = GameField::findAt(part->position - QPoint(0,1),parts);
+    auto right = GameField::findAt(part->position + QPoint(1,0),parts);
+    auto bottom = GameField::findAt(part->position + QPoint(0,1),parts);
+    auto left = GameField::findAt(part->position - QPoint(1,0),parts);
+
+    // Если были обнаружены части и если они еще не были добавлены с писок соседей
+    if(top != nullptr && neighbors->indexOf(top) == -1){
+        neighbors->push_back(top);
+        this->getAllNeighborsOf(top, neighbors);
+    }
+
+    if(right != nullptr && neighbors->indexOf(right) == -1){
+        neighbors->push_back(right);
+        this->getAllNeighborsOf(right, neighbors);
+    }
+
+    if(bottom != nullptr && neighbors->indexOf(bottom) == -1){
+        neighbors->push_back(bottom);
+        this->getAllNeighborsOf(bottom, neighbors);
+    }
+
+    if(left != nullptr && neighbors->indexOf(left) == -1){
+        neighbors->push_back(left);
+        this->getAllNeighborsOf(left, neighbors);
+    }
+}
+
 /// E V E N T S
 
 /**
@@ -529,48 +659,60 @@ ShipPart *Ship::getHead() {
  */
 void GameField::mousePressEvent(QGraphicsSceneMouseEvent *event) {
 
-    // Если зажали ЛКМ
-    if(event->button() == Qt::LeftButton)
+    // Если сосстояние поля "подготовка"
+    if(this->state_ == FieldState::PREPARING)
     {
-        // Сменить курсор
-        setCursor(Qt::SizeAllCursor);
-
-        // Получить положение курсора в координатах игрового поля
-        QPoint pos = this->toGameFieldSpace(event->scenePos());
-        // Часть которая может находится в данной клетке
-        ShipPart* part = GameField::findAt(pos,shipParts_.toStdVector());
-
-        // Если это часть не фантомного корабля
-        if(part != nullptr && part->ship != nullptr && !part->ship->isPhantom)
+        // Если зажали ЛКМ
+        if(event->button() == Qt::LeftButton)
         {
-            // Информация о целевом корабле
-            draggable_.targetOriginPart = part;
-            draggable_.targetShip = part->ship;
+            // Сменить курсор
+            setCursor(Qt::SizeAllCursor);
 
-            // Сделать фантомную копию корабля
-            draggable_.marketShip = this->copyShip(draggable_.targetShip, true,draggable_.targetShip);
-            // Найти ту часть фантомного корабля на которой сейчас курсор
-            draggable_.markerOriginPart = GameField::findAt(pos,draggable_.marketShip->parts.toStdVector());
-            // Перерисовать поле
-            this->update(this->boundingRect());
+            // Получить положение курсора в координатах игрового поля
+            QPoint pos = this->toGameFieldSpace(event->pos());
+            // Часть которая может находится в данной клетке
+            ShipPart* part = GameField::findAt(pos,shipParts_.toStdVector());
+
+            // Если это часть не фантомного корабля
+            if(part != nullptr && part->ship != nullptr && !part->ship->isPhantom)
+            {
+                // Информация о целевом корабле
+                draggable_.targetOriginPart = part;
+                draggable_.targetShip = part->ship;
+
+                // Сделать фантомную копию корабля
+                draggable_.marketShip = this->copyShip(draggable_.targetShip, true,draggable_.targetShip);
+                // Найти ту часть фантомного корабля на которой сейчас курсор
+                draggable_.markerOriginPart = GameField::findAt(pos,draggable_.marketShip->parts.toStdVector());
+                // Перерисовать поле
+                this->update(this->boundingRect());
+            }
+        }
+            // Если зажали ПКМ, и до этого не было активировано перетаскивание
+        else if(event->button() == Qt::RightButton && draggable_.targetShip == nullptr)
+        {
+            // Получить положение курсора в координатах игрового поля
+            QPoint pos = this->toGameFieldSpace(event->pos());
+            // Часть которая может находится в данной клетке
+            ShipPart* part = GameField::findAt(pos,shipParts_.toStdVector());
+
+            // Если это часть не фантомного корабля
+            if(part != nullptr && part->ship != nullptr && !part->ship->isPhantom)
+            {
+                // Повернуть, если это возможно
+                this->rotateShip(part->ship);
+                // Перерисовать поле
+                this->update(this->boundingRect());
+            }
         }
     }
-    // Если зажали ПКМ, и до этого не было активировано перетаскивание
-    else if(event->button() == Qt::RightButton && draggable_.targetShip == nullptr)
+    // Если сосстояние поля "подготовка"
+    else if(this->state_ == FieldState::ENEMY_READY && this->shotAtEnemyCallback_ != nullptr)
     {
         // Получить положение курсора в координатах игрового поля
-        QPoint pos = this->toGameFieldSpace(event->scenePos());
-        // Часть которая может находится в данной клетке
-        ShipPart* part = GameField::findAt(pos,shipParts_.toStdVector());
-
-        // Если это часть не фантомного корабля
-        if(part != nullptr && part->ship != nullptr && !part->ship->isPhantom)
-        {
-            // Повернуть, если это возможно
-            this->rotateShip(part->ship);
-            // Перерисовать поле
-            this->update(this->boundingRect());
-        }
+        QPoint pos = this->toGameFieldSpace(event->pos());
+        // Вызвать метод обратного вызова, передав координаты
+        this->shotAtEnemyCallback_(pos,this);
     }
 }
 
@@ -580,18 +722,22 @@ void GameField::mousePressEvent(QGraphicsSceneMouseEvent *event) {
  */
 void GameField::mouseMoveEvent(QGraphicsSceneMouseEvent *event) {
 
-    // Получить положение курсора в координатах игрового поля
-    QPoint pos = this->toGameFieldSpace(event->scenePos());
-
-    // Если есть маркер и часть, за которую "схватили"
-    if(draggable_.marketShip != nullptr && draggable_.markerOriginPart != nullptr)
+    // Если сосстояние поле "подготовка"
+    if(this->state_ == FieldState::PREPARING)
     {
-        // Если у части, за которую "схватили" позиция отличается от текущй поизиции курсора
-        if(draggable_.markerOriginPart->position != pos){
-            // Сдвинуть корабль-маркер
-            this->moveShip(draggable_.marketShip,pos,draggable_.markerOriginPart,draggable_.targetShip);
-            // Перерисовать поле
-            this->update(this->boundingRect());
+        // Получить положение курсора в координатах игрового поля
+        QPoint pos = this->toGameFieldSpace(event->pos());
+
+        // Если есть маркер и часть, за которую "схватили"
+        if(draggable_.marketShip != nullptr && draggable_.markerOriginPart != nullptr)
+        {
+            // Если у части, за которую "схватили" позиция отличается от текущй поизиции курсора
+            if(draggable_.markerOriginPart->position != pos){
+                // Сдвинуть корабль-маркер
+                this->moveShip(draggable_.marketShip,pos,draggable_.markerOriginPart,draggable_.targetShip);
+                // Перерисовать поле
+                this->update(this->boundingRect());
+            }
         }
     }
 }
@@ -602,36 +748,41 @@ void GameField::mouseMoveEvent(QGraphicsSceneMouseEvent *event) {
  */
 void GameField::mouseReleaseEvent(QGraphicsSceneMouseEvent *event) {
 
-    // Если отпустили ЛКМ
-    if(event->button() == Qt::LeftButton)
+    // Если сосстояние поле "подготовка"
+    if(this->state_ == FieldState::PREPARING)
     {
-        // Сменить курсор
-        setCursor(Qt::ArrowCursor);
-
-        // Получить положение курсора в координатах игрового поля
-        QPoint pos = this->toGameFieldSpace(event->scenePos());
-
-        // Если есть данные о фантомном корабле
-        if(draggable_.marketShip != nullptr)
+        // Если отпустили ЛКМ
+        if(event->button() == Qt::LeftButton)
         {
-            // Если положение в которое был перемещен фантомный корабль - легально
-            if(!draggable_.marketShip->placementRulesViolated){
-                // Переместить туда корабль целевой
-                if(draggable_.targetShip != nullptr && draggable_.targetOriginPart != nullptr){
-                    this->moveShip(draggable_.targetShip,pos,draggable_.targetOriginPart);
+            // Сменить курсор
+            setCursor(Qt::ArrowCursor);
+
+            // Получить положение курсора в координатах игрового поля
+            QPoint pos = this->toGameFieldSpace(event->pos());
+
+            // Если есть данные о фантомном корабле
+            if(draggable_.marketShip != nullptr)
+            {
+                // Если положение в которое был перемещен фантомный корабль - легально
+                if(!draggable_.marketShip->placementRulesViolated){
+                    // Переместить туда корабль целевой
+                    if(draggable_.targetShip != nullptr && draggable_.targetOriginPart != nullptr){
+                        this->moveShip(draggable_.targetShip,pos,draggable_.targetOriginPart);
+                        draggable_.targetShip->placementRulesViolated = false;
+                    }
                 }
+
+                // Удалить фантомный корабль
+                draggable_.markerOriginPart = nullptr;
+                this->removeShip(&draggable_.marketShip);
+
+                // Перерисовать поле
+                this->update(this->boundingRect());
             }
 
-            // Удалить фантомный корабль
-            draggable_.markerOriginPart = nullptr;
-            this->removeShip(&draggable_.marketShip);
-
-            // Перерисовать поле
-            this->update(this->boundingRect());
+            // Очистить указатели
+            draggable_.targetShip = nullptr;
+            draggable_.targetOriginPart = nullptr;
         }
-
-        // Очистить указатели
-        draggable_.targetShip = nullptr;
-        draggable_.targetOriginPart = nullptr;
     }
 }

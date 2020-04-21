@@ -71,14 +71,34 @@ struct CellMark
 /// Игровое поле
 class GameField final : public QGraphicsItem {
 
+public:
+    /// Состояние поля
+    enum FieldState {
+        // Подготовка (есть корабли, можно перемещать их)
+        PREPARING,
+        // Готово (есть корабли, перемещать нельзя)
+        READY,
+        // Подготовка вражеского поля (поле пустое, блеклое, взаимодействовать нельзя)
+        ENEMY_PREPARING,
+        // Вражеское поле готово (поле пустое, можно стрелять по полю)
+        ENEMY_READY
+    };
+
+    /// Тип выстрела по полю
+    enum ShotType {
+        MISS,
+        HIT,
+        DESTROYED
+    };
 
 public:
     /**
      * Конструктор
      * @param cellSize Размер ячейки
      * @param fieldSize Размер поля (ячеек по ширине и высоте)
+     * @param fieldState Состояние поля
      */
-    explicit GameField(qreal cellSize, const QPoint& fieldSize);
+    explicit GameField(qreal cellSize, const QPoint& fieldSize, FieldState fieldState);
 
     /**
      * Деструктор
@@ -154,6 +174,42 @@ public:
     void removeMark(CellMark** mark);
 
     /**
+     * Выстрел по полю (создание части, либо корабля)
+     * @param position Положение на поле
+     * @param shotType Тип выстрела
+     */
+    void shotAt(const QPoint& position, ShotType shotType);
+
+    /**
+     * Установить состояние игрового поля
+     * @param state Состояние
+     */
+    void setState(FieldState state);
+
+    /**
+     * Получить состояние игрового поля
+     * @return Состояние поля
+     */
+    FieldState getState();
+
+    /**
+     * Добавить стартовые корабли
+     */
+    void addStartupShips();
+
+    /**
+     * Все ли корабли размещены в пределах поля
+     * @return Да или нет
+     */
+    bool allShipsPlaced();
+
+    /**
+     * Установить обработчик события выстрела по вражескому полю
+     * @param callback Функция-обработчик
+     */
+    void setShotAtEnemyCallback(const std::function<void(const QPoint &pos, GameField* gameField)>& callback);
+
+    /**
      * Получить часть корабля с заданным положением среди частей
      * @param position Положение
      * @param parts Части среди которых искать
@@ -216,6 +272,12 @@ private:
         ShipPart* markerOriginPart = nullptr;
     } draggable_;
 
+    /// Состояние поля
+    FieldState state_;
+
+    /// Функция обратного вызова для выстрелов по вражескому полю
+    std::function<void(const QPoint &pos, GameField* gameField)> shotAtEnemyCallback_ = nullptr;
+
     /**
      * Проверить не нарушает ли правила размещения корабль
      * @param ship Указатель на корабль
@@ -237,4 +299,11 @@ private:
      * @return Точка в координатах игрового поля
      */
     QPoint toGameFieldSpace(const QPointF& sceneSpacePoint);
+
+    /**
+     * Рекурсивно заполнить массив соседями части
+     * @param part Исходная часть
+     * @param neighbors Указатель на массив соседей
+     */
+    void getAllNeighborsOf(ShipPart* part, QVector<ShipPart*>* neighbors);
 };
