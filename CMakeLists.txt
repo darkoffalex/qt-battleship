@@ -17,10 +17,17 @@ set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_SOURCE_DIR}/Bin)
 # Линковку необходимо установить глобально, в противном случае у CMake будет какая-то хуйбалистика с путями (CMAKE_PREFIX_PATH)
 set(QT_STATIC_LINK OFF)
 
-# Клиент
-add_subdirectory("Sources/Client")
+# Wrapper для работы с сетью
+add_subdirectory("Sources/NetworkApi")
 
 # Сервер
 add_subdirectory("Sources/Server")
+
+# Клиент (консольная версия)
+add_subdirectory("Sources/ClientShell")
+
+# Клиент (GUI)
+add_subdirectory("Sources/Client")
+
 
 

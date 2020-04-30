@@ -6,9 +6,9 @@ set(QT_GNU_X86_STATIC_DIR   "C:\\Qt\\5.9.9\\mingw53_32\\")
 set(QT_GNU_X64_DIR          "C:\\Qt\\5.9.9\\mingw53_32\\")
 set(QT_GNU_X64_STATIC_DIR   "C:\\Qt\\5.9.9\\mingw53_32\\")
 set(QT_MSVC_X64_DIR         "C:\\Qt\\5.9.9\\msvc2017_64\\")
-set(QT_MSVC_X64_STATIC_DIR  "C:\\Qt\\5.9.9\\msvc2019_32_static\\")
+set(QT_MSVC_X64_STATIC_DIR  "C:\\Qt\\5.9.9\\msvc2017_32_static\\")
 set(QT_MSVC_X86_DIR         "C:\\Qt\\5.9.9\\msvc2017_64\\")
-set(QT_MSVC_X86_STATIC_DIR  "C:\\Qt\\5.9.9\\msvc2019_32_static\\")
+set(QT_MSVC_X86_STATIC_DIR  "C:\\Qt\\5.9.9\\msvc2017_32_static\\")
 
 # Выбор пути к библиотеке QT в зависимости от конфигурации
 if (CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
