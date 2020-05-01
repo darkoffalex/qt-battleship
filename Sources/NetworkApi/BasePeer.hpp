@@ -72,22 +72,30 @@ namespace net
         }
 
         /**
-         * Ожидать сообщения
-         * @param timeout Время ожидания получения
-         * @param maxAttempts Количество попыток при неудачном прочтении полезной нагрузки
-         * @return Вернуть сообщение
+         * Получить сокет
+         * @return Указатель на сокет
          */
-        Msg waitForMessage(int timeout = -1, unsigned maxAttempts = 10){
+        QTcpSocket* getSocket(){
+            return connection_;
+        }
+
+        /**
+         * Читать сообщение
+         * @param maxAttempts Количество попыток при неудачном прочтении полезной нагрузки
+         * @return Объект сообщения
+         */
+        Msg readMessage(unsigned maxAttempts = 10){
             // Тип сообщения
             uint8_t msgType = MSG_UNDEFINED;
             // Размер полезной нагрузки
             size_t payloadSize = 0;
 
             // Ожидать готовности чтения
-            if(connection_ != nullptr && connection_->waitForReadyRead(timeout))
+            if(connection_ != nullptr && connection_->state() == QTcpSocket::ConnectedState)
             {
                 // Прочесть первый байт (это тип сообщения)
                 connection_->read(reinterpret_cast<char*>(&msgType), sizeof(uint8_t));
+
                 // В зависимости от типа определить размер полезной нагрузки
                 switch(msgType){
                     case MSG_SHOT_AVAILABLE:
@@ -128,6 +136,21 @@ namespace net
 
             // Вернуть сообщение
             return msg;
+        }
+
+        /**
+         * Ожидать сообщения
+         * @param timeout Время ожидания получения
+         * @param maxAttempts Количество попыток при неудачном прочтении полезной нагрузки
+         * @return Объект сообщения
+         */
+        Msg waitForMessage(int timeout = -1, unsigned maxAttempts = 10){
+            // Ожидать готовности чтения
+            if(connection_ != nullptr && connection_->waitForReadyRead(timeout))
+            {
+                return this->readMessage(maxAttempts);
+            }
+            return Msg(MSG_UNDEFINED, 0);
         }
 
         /**

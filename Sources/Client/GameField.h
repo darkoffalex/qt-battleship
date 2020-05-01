@@ -29,6 +29,11 @@ struct Ship
      * @return Указатель на головную часть (если есть) либо nullptr
      */
     ShipPart* getHead();
+
+    /**
+     * Уничтожен ли корабль
+     */
+    bool isDestroyed();
 };
 
 /// Часть корабля
@@ -68,6 +73,9 @@ struct CellMark
     QPoint position = {};
 };
 
+/// Предварительное объявление (для использования в аргументах функций)
+class GameWindow;
+
 /// Игровое поле
 class GameField final : public QGraphicsItem {
 
@@ -98,7 +106,7 @@ public:
      * @param fieldSize Размер поля (ячеек по ширине и высоте)
      * @param fieldState Состояние поля
      */
-    explicit GameField(qreal cellSize, const QPoint& fieldSize, FieldState fieldState);
+    explicit GameField(qreal cellSize, const QPoint& fieldSize, FieldState fieldState, GameWindow* parentWindow);
 
     /**
      * Деструктор
@@ -174,6 +182,12 @@ public:
     void removeMark(CellMark** mark);
 
     /**
+     * Получить координаты последнего выстрела
+     * @return Точка
+     */
+    QPoint getLastShotCoordinates();
+
+    /**
      * Выстрел по полю (создание части, либо корабля)
      * @param position Положение на поле
      * @param shotType Тип выстрела
@@ -204,10 +218,30 @@ public:
     bool allShipsPlaced();
 
     /**
+     * Все ли корабли на поле уничтожены
+     * @return Да или нет
+     */
+    bool allShipsDestroyed();
+
+    /**
      * Установить обработчик события выстрела по вражескому полю
      * @param callback Функция-обработчик
      */
-    void setShotAtEnemyCallback(const std::function<void(const QPoint &pos, GameField* gameField)>& callback);
+    void setShotAtEnemyCallback(const std::function<void(const QPoint &pos, GameField* gameField, GameWindow* gameWindow)>& callback);
+
+    /**
+     * Пуста ли ячейка по указанным координатам
+     * @param position Координаты
+     * @return Да или нет
+     */
+    bool isCellEmptyAt(const QPoint& position);
+
+    /**
+     * Получить часть корабля с заданным положением среди всех частей кораблей на поле
+     * @param position Положение
+     * @return Указатель на часть корабля
+     */
+    ShipPart* findAt(const QPoint& position);
 
     /**
      * Получить часть корабля с заданным положением среди частей
@@ -218,10 +252,10 @@ public:
     static ShipPart* findAt(const QPoint& position, const std::vector<ShipPart*>& parts);
 
     /**
-     * Полдучить все части удовлетворябщие определнному условию
+     * Получить все части удовлетворяющее определенному условию
      * @param parts Массив частей
-     * @param condition Услвоие (функция обратного вызкова)
-     * @return Массив удоавлетворяющих условию частей
+     * @param condition Условие (функция обратного вызкова)
+     * @return Массив удовлетворяющих условию частей
      */
     static std::vector<ShipPart*> findAllOf(const std::vector<ShipPart*>& parts, const std::function<bool(ShipPart*)>& condition);
 
@@ -245,6 +279,12 @@ protected:
     void mouseReleaseEvent(QGraphicsSceneMouseEvent *event) override;
 
 private:
+    /// Родительское окно
+    GameWindow* parentWindow_;
+
+    /// Координаты последнего выстрела по полю
+    QPoint lastShot_;
+
     /// Размер клетки поля
     qreal cellSize_;
 
@@ -276,7 +316,7 @@ private:
     FieldState state_;
 
     /// Функция обратного вызова для выстрелов по вражескому полю
-    std::function<void(const QPoint &pos, GameField* gameField)> shotAtEnemyCallback_ = nullptr;
+    std::function<void(const QPoint &pos, GameField* gameField, GameWindow* gameWindow)> shotAtEnemyCallback_ = nullptr;
 
     /**
      * Проверить не нарушает ли правила размещения корабль

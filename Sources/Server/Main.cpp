@@ -1,5 +1,6 @@
 #include <iostream>
 #include <unordered_map>
+#include <QtPlugin>
 
 #include "../NetworkApi/Msg.hpp"
 #include "../NetworkApi/MsgGameStatus.hpp"

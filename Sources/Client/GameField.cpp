@@ -11,7 +11,8 @@
  * @param fieldSize Размер поля (ячеек по ширине и высоте)
  * @param fieldState Состояние поля
  */
-GameField::GameField(qreal cellSize, const QPoint &fieldSize, FieldState fieldState):
+GameField::GameField(qreal cellSize, const QPoint &fieldSize, FieldState fieldState, GameWindow* parentWindow):
+        parentWindow_(parentWindow),
         cellSize_(cellSize),
         fieldSize_(fieldSize),
         state_(fieldState),
@@ -42,18 +43,19 @@ QRectF GameField::boundingRect() const {
  * Отрисовка игрового поля со всеми кораблями и прочими объектами
  * @param painter Объект painter
  * @param option Параметры рисования
- * @param widget Указатель на виджет, на котором просиходит отрисовка
+ * @param widget Указатель на виджет, на котором происходит отрисовка
  */
 void GameField::paint(QPainter *painter, const QStyleOptionGraphicsItem *option, QWidget *widget) {
 
-    // Заличка не нужна
+    // Заливка не нужна
     painter->setBrush(Qt::NoBrush);
     // Черные линии толщиной в 1 пиксель
     painter->setPen(QPen(QColor(0,0,0, this->state_ == ENEMY_PREPARING ? 100 : 255),1.0f,Qt::PenStyle::SolidLine,Qt::PenCapStyle::SquareCap,Qt::PenJoinStyle::MiterJoin));
 
     // Символы первого ряда
-    //TODO: придумать что-то на случаей если поле больше чем 10 клеток в ширину
+    //TODO: придумать что-то на случай если поле больше чем 10 клеток в ширину
     wchar_t symbols[10] = {u'Р',u'Е',u'С',u'П',u'У',u'Б',u'Л',u'И',u'К',u'А'};
+//    wchar_t symbols[10] = {'Р','Е','С','П','У','Б','Л','И','К','А'};
 
     // Нарисовать поле
     for(int i = 0; i < fieldSize_.x()+1; i++)
@@ -437,12 +439,36 @@ bool GameField::allShipsPlaced() {
 }
 
 /**
+ * Все ли корабли на поле уничтожены
+ * @return Да или нет
+ */
+bool GameField::allShipsDestroyed()
+{
+    for(auto ship: ships_){
+        if(!ship->isDestroyed()){
+            return false;
+        }
+    }
+    return true;
+}
+
+
+/**
  * Установить обработчик события выстрела по вражескому полю
  * @param callback Функция-обработчик
  */
-void GameField::setShotAtEnemyCallback(const std::function<void(const QPoint &pos, GameField* gameField)>& callback)
+void GameField::setShotAtEnemyCallback(const std::function<void(const QPoint &pos, GameField* gameField, GameWindow* gameWindow)>& callback)
 {
     this->shotAtEnemyCallback_ = callback;
+}
+
+/**
+ * Получить координаты последнего выстрела
+ * @return Точка
+ */
+QPoint GameField::getLastShotCoordinates()
+{
+    return lastShot_;
 }
 
 
@@ -554,6 +580,34 @@ void ShipPart::draw(QPainter *painter, const QVector<ShipPart*> &existingParts, 
 }
 
 /**
+ * Пуста ли ячейка по указанным координатам
+ * @param position Координаты
+ * @return Да или нет
+ */
+bool GameField::isCellEmptyAt(const QPoint &position)
+{
+    auto shipPartIt = std::find_if(shipParts_.begin(),shipParts_.end(),[&](ShipPart* entry){
+        return entry->position == position;
+    });
+
+    auto cellMarkIt = std::find_if(cellMarks_.begin(),cellMarks_.end(),[&](CellMark* entry){
+        return entry->position == position;
+    });
+
+    return shipPartIt == shipParts_.end() && cellMarkIt == cellMarks_.end();
+}
+
+/**
+ * Получить часть корабля с заданным положением среди всех частей кораблей на поле
+ * @param position Положение
+ * @return Указатель на часть корабля
+ */
+ShipPart *GameField::findAt(const QPoint &position)
+{
+    return GameField::findAt(position,shipParts_.toStdVector());
+}
+
+/**
  * Получить часть корабля с заданным положением среди частей
  * @param position Положение
  * @param parts Части среди которых искать
@@ -573,10 +627,10 @@ ShipPart *GameField::findAt(const QPoint &position, const std::vector<ShipPart*>
 }
 
 /**
- * Полдучить все части удовлетворябщие определнному условию
+ * Получить все части удовлетворяющее определенному условию
  * @param parts Массив частей
- * @param condition Услвоие (функция обратного вызкова)
- * @return Массив удоавлетворяющих условию частей
+ * @param condition Условие (функция обратного вызкова)
+ * @return Массив удовлетворяющих условию частей
  */
 std::vector<ShipPart *> GameField::findAllOf(const std::vector<ShipPart *> &parts, const std::function<bool(ShipPart*)>& condition)
 {
@@ -611,6 +665,18 @@ ShipPart *Ship::getHead() {
     }
 
     return *elementIt;
+}
+
+/**
+ * Уничтожен ли корабль
+ */
+bool Ship::isDestroyed()
+{
+    for(auto part : parts){
+        if(!part->isDestroyed) return false;
+    }
+
+    return true;
 }
 
 /**
@@ -659,7 +725,7 @@ void GameField::getAllNeighborsOf(ShipPart *part, QVector<ShipPart*>* neighbors)
  */
 void GameField::mousePressEvent(QGraphicsSceneMouseEvent *event) {
 
-    // Если сосстояние поля "подготовка"
+    // Если состояние поля "подготовка"
     if(this->state_ == FieldState::PREPARING)
     {
         // Если зажали ЛКМ
@@ -706,13 +772,15 @@ void GameField::mousePressEvent(QGraphicsSceneMouseEvent *event) {
             }
         }
     }
-    // Если сосстояние поля "подготовка"
+    // Если состояние поля "подготовка"
     else if(this->state_ == FieldState::ENEMY_READY && this->shotAtEnemyCallback_ != nullptr)
     {
         // Получить положение курсора в координатах игрового поля
         QPoint pos = this->toGameFieldSpace(event->pos());
+        // Сохранить данные о последнем "выстреле"
+        lastShot_ = pos;
         // Вызвать метод обратного вызова, передав координаты
-        this->shotAtEnemyCallback_(pos,this);
+        this->shotAtEnemyCallback_(pos,this,parentWindow_);
     }
 }
 
@@ -722,7 +790,7 @@ void GameField::mousePressEvent(QGraphicsSceneMouseEvent *event) {
  */
 void GameField::mouseMoveEvent(QGraphicsSceneMouseEvent *event) {
 
-    // Если сосстояние поле "подготовка"
+    // Если состояние поле "подготовка"
     if(this->state_ == FieldState::PREPARING)
     {
         // Получить положение курсора в координатах игрового поля
@@ -748,7 +816,7 @@ void GameField::mouseMoveEvent(QGraphicsSceneMouseEvent *event) {
  */
 void GameField::mouseReleaseEvent(QGraphicsSceneMouseEvent *event) {
 
-    // Если сосстояние поле "подготовка"
+    // Если состояние поле "подготовка"
     if(this->state_ == FieldState::PREPARING)
     {
         // Если отпустили ЛКМ

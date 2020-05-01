@@ -15,7 +15,7 @@ set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_SOURCE_DIR}/Bin)
 
 # Установка линковки для QT библиотеки
 # Линковку необходимо установить глобально, в противном случае у CMake будет какая-то хуйбалистика с путями (CMAKE_PREFIX_PATH)
-set(QT_STATIC_LINK OFF)
+set(QT_STATIC_LINK ON)
 
 # Wrapper для работы с сетью
 add_subdirectory("Sources/NetworkApi")

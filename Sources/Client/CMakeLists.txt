@@ -27,9 +27,15 @@ set(CMAKE_AUTOUIC ON)
 set(CMAKE_AUTOMOC ON)
 set(CMAKE_AUTORCC ON)
 
+if(MSVC)
+    add_compile_options("/utf-8")
+endif()
+
 # Добавляем .exe (проект в Visual Studio)
-add_executable(${TARGET_NAME}
+add_executable(${TARGET_NAME} WIN32
         "Main.cpp"
+        "SettingsWindow.h" "SettingsWindow.cpp" "SettingsWindow.ui"
+        "GameStartWindow.h" "GameStartWindow.cpp" "GameStartWindow.ui"
         "GameWindow.cpp" "GameWindow.h"
         "GameField.cpp" "GameField.h")
 
